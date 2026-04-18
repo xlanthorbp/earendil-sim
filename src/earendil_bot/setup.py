@@ -30,7 +30,7 @@ setup(
     zip_safe=True,
     maintainer='berkay',
     maintainer_email='berkaypaksoy07@gmail.com',
-    description='EARENDIL: Package description',
+    description='TODO: Package description',
     license='EDUCATIONAL: License declaration',
     extras_require={
         'test': [

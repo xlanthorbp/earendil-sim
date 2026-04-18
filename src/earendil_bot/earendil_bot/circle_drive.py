@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from rclpy.duration import Duration  # Import buraya taşındı
+from rclpy.duration import Duration  # Import for Duration class
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from geometry_msgs.msg import PoseStamped
 from tf2_ros.buffer import Buffer
@@ -90,22 +90,22 @@ def main():
     navigator.get_logger().info('--- Starting circular path around initial start point ---')
     circle_waypoints = []
     radius = 10.0
-    num_points = 10  # 36 derece aralıklar (360 / 10 = 36)
+    num_points = 10  # 36 degree intervals (360 / 10 = 36)
     
-    # Merkez, robotun ilk kalkış noktası
+    # Center point is the robot's initial starting position
     center_x = start_x
     center_y = start_y
     
     start_angle = forward_yaw
     
-    # Dairenin noktalarını hesaplama
+    # Calculate waypoints for the circular path
     for i in range(1, num_points + 1):
         angle = start_angle + (2.0 * math.pi / num_points) * i
         
         x = center_x + radius * math.cos(angle)
         y = center_y + radius * math.sin(angle)
         
-        # Heading: Daireye teğet (tangent) bakış yönü
+        # Heading: Look direction tangent to the circle path
         yaw = angle + (math.pi / 2.0)
         
         pose = create_pose(navigator, x, y, yaw)

@@ -4,8 +4,8 @@
   <name>earendil_bot</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="berkay@todo.todo">berkay</maintainer>
-  <license>Apache-2.0</license>
+  <maintainer email="berkaypaksoy07@gmail.com">berkay</maintainer>
+  <license>EDUCATIONAL: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>

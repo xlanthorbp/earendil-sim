@@ -8,18 +8,18 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_name = 'earendil_bot'
     
-    # Gazebo'yu başlatma süreci
+    # Process to start Gazebo
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
             get_package_share_directory('gazebo_ros'), 'launch', 'gazebo.launch.py')]),
     )
 
-    # URDF dosyasını okuma
+    # Read the URDF file
     urdf_file = os.path.join(
         get_package_share_directory(pkg_name), 'description', 'robot.urdf.xacro'
     )
     
-    # Robot State Publisher (URDF'i topic olarak yayınlar)
+    # Robot State Publisher (publishes URDF as a topic)
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -28,7 +28,7 @@ def generate_launch_description():
         arguments=[urdf_file]
     )
 
-    # Robotu Gazebo'ya "Spawn" etme (Yaratma)
+    # Spawn the robot entity in Gazebo
     spawn_entity = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
