@@ -8,12 +8,16 @@ class ArduinoJoyNode(Node):
         super().__init__('arduino_joy_node')
         self.publisher_ = self.create_publisher(Joy, 'joy', 10)
         
-        # NOTE: Check your Arduino port! It might be /dev/ttyUSB0 or /dev/ttyUSB0
-        self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
-        self.timer = self.create_timer(0.05, self.timer_callback) # 20 Hz
+        # NOTE: Check your Arduino port! It might be /dev/ttyACM0 or /dev/ttyUSB0
+        try:
+            self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+            self.timer = self.create_timer(0.05, self.timer_callback) # 20 Hz
+        except serial.serialutil.SerialException:
+            self.get_logger().warn("Arduino joystick not found at /dev/ttyUSB0. Running without joystick control.")
+            self.serial_port = None
 
     def timer_callback(self):
-        if self.serial_port.in_waiting > 0:
+        if self.serial_port is not None and self.serial_port.in_waiting > 0:
             try:
                 line = self.serial_port.readline().decode('utf-8', errors='ignore').rstrip()
                 # Parse the comma-separated values from Arduino
@@ -48,7 +52,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.serial_port.close()
+        if node.serial_port is not None:
+            node.serial_port.close()
         node.destroy_node()
         rclpy.shutdown()
 
