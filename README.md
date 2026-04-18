@@ -105,4 +105,3 @@ You can also run any mission stage manually to test specific behaviors:
     ├── earendil_bot/           # Python autonomy nodes (CV, Nav, State Machines)
     ├── launch/                 # Launch files
     └── world/                  # Custom Gazebo environment meshes and models
-```
