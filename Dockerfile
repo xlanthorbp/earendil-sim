@@ -1,43 +1,56 @@
-# ── Base Image ──────────────────────────────────────────────────────
-# ros:humble-desktop includes ROS 2 Humble + Gazebo Classic 11 + RViz2
-FROM osrf/ros:humble-desktop
+# ====================================================================
+# STAGE 1: Builder
+# ====================================================================
+FROM osrf/ros:humble-desktop AS builder
 
-# Avoid interactive prompts during apt install
 ENV DEBIAN_FRONTEND=noninteractive
-
-# ── System Dependencies ────────────────────────────────────────────
-# Install rosdep + any system packages not covered by rosdep
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip \
-    python3-serial \
-    ros-humble-gazebo-plugins \
-    ros-humble-aruco-ros \
-    ros-humble-twist-mux \
-    ros-humble-slam-toolbox \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
-    ros-humble-robot-localization \
-    ros-humble-cv-bridge \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── Copy Source ─────────────────────────────────────────────────────
 WORKDIR /robot_ws
-COPY src/ src/
 
-# ── Install ROS Dependencies via rosdep ─────────────────────────────
+# 1. Copy package.xml first to utilize Docker layer caching.
+# If you only change Python/Xacro files, this step and rosdep install
+# will be instantly loaded from cache, saving minutes on every build!
+COPY src/earendil_bot/package.xml src/earendil_bot/package.xml
+
+# 2. Install all ROS dependencies defined in package.xml automatically
 RUN apt-get update \
     && rosdep update \
     && rosdep install --from-paths src --ignore-src -y \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Build the Workspace ────────────────────────────────────────────
-RUN . /opt/ros/humble/setup.sh && \
-    colcon build --symlink-install
+# 3. Copy the rest of the source code
+COPY src/ src/
 
-# ── Entrypoint ──────────────────────────────────────────────────────
+# 4. Build the workspace
+# Note: No --symlink-install here! We want actual compiled files so we
+# can leave the 'src' folder behind in the next stage.
+RUN . /opt/ros/humble/setup.sh && \
+    colcon build
+
+
+# ====================================================================
+# STAGE 2: Runtime
+# ====================================================================
+FROM osrf/ros:humble-desktop AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /robot_ws
+
+# 1. Copy package.xml again to install dependencies in the runtime image
+COPY src/earendil_bot/package.xml src/earendil_bot/package.xml
+
+# 2. Install runtime dependencies
+RUN apt-get update \
+    && rosdep update \
+    && rosdep install --from-paths src --ignore-src -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Copy ONLY the compiled 'install' folder from the builder stage.
+# We leave behind 'src', 'build', 'log' and all compiler caches.
+COPY --from=builder /robot_ws/install /robot_ws/install
+
+# 4. Setup entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
 
-# Default command: open a bash shell
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

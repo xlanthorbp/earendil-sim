@@ -55,7 +55,8 @@ def main(args=None):
         if node.serial_port is not None:
             node.serial_port.close()
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

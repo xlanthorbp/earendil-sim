@@ -88,6 +88,7 @@ class BaseExit(Node):
 
         # ---- State ----
         self.state: str = 'WAIT_SCAN'  # WAIT_SCAN → ALIGN → DRIVE → CLEARANCE → DONE
+        self.base_saved: bool = False
         self.escape_confirm: int = 0
         self.clearance_remaining: float = self.clearance_distance
         self.last_stamp: Optional[float] = None
@@ -101,8 +102,8 @@ class BaseExit(Node):
         self.scan_sub = self.create_subscription(
             LaserScan, scan_topic, self._scan_callback, 10)
 
-        # Save starting position for base_return.py
-        self._save_base_position()
+        # Save starting position for base_return.py using a timer instead of blocking
+        self.save_base_timer = self.create_timer(0.5, self._save_base_position)
 
         self.get_logger().info(
             f"BaseExit ready — subscribing to '{scan_topic}', "
@@ -114,36 +115,33 @@ class BaseExit(Node):
     # ------------------------------------------------------------------ #
     def _save_base_position(self) -> None:
         """Look up robot pose in map frame and save to JSON file."""
-        self.get_logger().info('Waiting for TF to save base position …')
-        for attempt in range(30):  # retry for up to 3 seconds
-            try:
-                t = self.tf_buffer.lookup_transform(
-                    'map', 'base_footprint',
-                    rclpy.time.Time(),
-                    timeout=Duration(seconds=0.5),
-                )
-                pos = t.transform.translation
-                rot = t.transform.rotation
-                base_data = {
-                    'x': pos.x,
-                    'y': pos.y,
-                    'z': pos.z,
-                    'qx': rot.x,
-                    'qy': rot.y,
-                    'qz': rot.z,
-                    'qw': rot.w,
-                }
-                save_path = os.path.expanduser('~/.ros/base_position.json')
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                with open(save_path, 'w') as f:
-                    json.dump(base_data, f, indent=2)
-                self.get_logger().info(
-                    f'📍 Base position saved: x={pos.x:.2f}, y={pos.y:.2f} '
-                    f'→ {save_path}')
-                return
-            except TransformException:
-                rclpy.spin_once(self, timeout_sec=0.1)
-        self.get_logger().warn('⚠️ Could not save base position (TF unavailable).')
+        try:
+            t = self.tf_buffer.lookup_transform(
+                'map', 'base_footprint',
+                rclpy.time.Time()
+            )
+            pos = t.transform.translation
+            rot = t.transform.rotation
+            base_data = {
+                'x': pos.x,
+                'y': pos.y,
+                'z': pos.z,
+                'qx': rot.x,
+                'qy': rot.y,
+                'qz': rot.z,
+                'qw': rot.w,
+            }
+            save_path = os.path.expanduser('~/.ros/base_position.json')
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            with open(save_path, 'w') as f:
+                json.dump(base_data, f, indent=2)
+            self.get_logger().info(
+                f'📍 Base position saved: x={pos.x:.2f}, y={pos.y:.2f} '
+                f'→ {save_path}')
+            self.base_saved = True
+            self.save_base_timer.cancel()
+        except TransformException:
+            self.get_logger().info('Waiting for TF to save base position …', throttle_duration_sec=1.0)
 
     # ------------------------------------------------------------------ #
     #  Helpers
@@ -188,6 +186,9 @@ class BaseExit(Node):
 
         # ---- State machine ----
         if self.state == 'WAIT_SCAN':
+            if not self.base_saved:
+                return  # Wait for position to be saved first
+
             self.get_logger().info(
                 f'First scan received — front={front_mean:.2f} m, '
                 f'left={left_mean:.2f} m, right={right_mean:.2f} m')
@@ -241,8 +242,7 @@ class BaseExit(Node):
 
         if self.state == 'DONE':
             self._stop()
-            import sys
-            sys.exit(0)
+            raise SystemExit
 
 
 def main(args: Optional[Sequence[str]] = None) -> None:
@@ -250,7 +250,7 @@ def main(args: Optional[Sequence[str]] = None) -> None:
     node = BaseExit()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         pass
     finally:
         try:

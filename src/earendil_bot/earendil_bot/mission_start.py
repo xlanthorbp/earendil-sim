@@ -7,11 +7,9 @@ The coordinator waits for each to finish before launching the next.
 
 Mission Sequence:
     1. base_exit          — Exit the starting enclosure, save home position
-    2. mission_antenna    — Navigate to the antenna via GPS/Nav2
-    3. mission_crater     — Navigate to the crater via GPS/Nav2
-    4. mission_lavatube   — Navigate to the lava tube via GPS/Nav2
-    5. tunnel_aruco_nav   — Detect ArUco markers, drive through tunnel
-    6. base_return        — Return to the saved starting position
+    2. mission_nav        — Interactive menu to select and navigate to a waypoint
+    3. tunnel_aruco_nav   — Detect ArUco markers, drive through tunnel
+    4. base_return        — Return to the saved starting position
 
 Usage:
     ros2 run earendil_bot mission_start
@@ -27,9 +25,7 @@ import time
 # ─────────────────────────────────────────────
 MISSION_SEQUENCE = [
     ("base_exit",        "Exit enclosure & save home position"),
-    ("mission_antenna",  "Navigate to antenna"),
-    ("mission_crater",   "Navigate to crater"),
-    ("mission_lavatube", "Navigate to lava tube"),
+    ("mission_nav",      "Navigate to mission waypoint (interactive)"),
     ("tunnel_aruco_nav", "ArUco tunnel traversal"),
     ("base_return",      "Return to home base"),
 ]

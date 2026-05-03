@@ -6,46 +6,62 @@ Uses Nav2's BasicNavigator (nav2_simple_commander) to drive the robot
 through a sequence of user-defined waypoints.  Designed for rough /
 uneven surfaces where progress is slower and tolerances must be relaxed.
 
+Waypoints are loaded from config/missions.yaml.
+
 Usage:
     ros2 run earendil_bot waypoint_nav              # run once
     ros2 run earendil_bot waypoint_nav --ros-args -p loop:=true   # patrol continuously
 """
 
+import os
+import math
+import time
+
+import yaml
+
 import rclpy
 from rclpy.node import Node
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from geometry_msgs.msg import PoseStamped
-import math
-import time
-
-
 from robot_localization.srv import FromLL
-from geographic_msgs.msg import GeoPose
-
-# ─────────────────────────────────────────────
-#  EDIT YOUR GPS WAYPOINTS HERE
-#  Each tuple is (Latitude, Longitude, yaw_degrees)
-# ─────────────────────────────────────────────
-WAYPOINTS = [
-    (39.925050, 32.836956,   0),  # Approx 3.5m North
-    (39.925050, 32.836920, -90),  # West
-    (39.925018, 32.836920, 180),  # South
-    (39.925018, 32.836956,  90),  # East
-]
+from ament_index_python.packages import get_package_share_directory
 
 
-def create_pose(navigator: BasicNavigator, node: Node, lat: float, lon: float, yaw_deg: float) -> PoseStamped:
+def load_waypoints() -> list:
+    """Load waypoints from config/missions.yaml as (lat, lon, yaw_deg) tuples."""
+    config_path = os.path.join(
+        get_package_share_directory('earendil_bot'),
+        'config', 'missions.yaml',
+    )
+    with open(config_path, 'r') as f:
+        data = yaml.safe_load(f)
+
+    missions = data.get('missions', {})
+    waypoints = []
+    for name, info in missions.items():
+        # Default yaw = 0 — missions.yaml doesn't specify yaw
+        waypoints.append((info['lat'], info['lon'], 0))
+    return waypoints
+
+
+def create_pose(
+    navigator: BasicNavigator,
+    node: Node,
+    lat: float,
+    lon: float,
+    yaw_deg: float,
+    fromll_client,
+) -> PoseStamped:
     """Uses /fromLL service to convert GPS to map frame PoseStamped."""
-    client = node.create_client(FromLL, '/fromLL')
-    while not client.wait_for_service(timeout_sec=1.0):
+    while not fromll_client.wait_for_service(timeout_sec=1.0):
         node.get_logger().info('/fromLL service not available, waiting...')
-    
+
     req = FromLL.Request()
     req.ll_point.latitude = lat
     req.ll_point.longitude = lon
     req.ll_point.altitude = 0.0
-    
-    future = client.call_async(req)
+
+    future = fromll_client.call_async(req)
     rclpy.spin_until_future_complete(node, future)
     res = future.result()
 
@@ -65,11 +81,14 @@ def create_pose(navigator: BasicNavigator, node: Node, lat: float, lon: float, y
 def main():
     rclpy.init()
 
-    # Create a dummy node to run the service clients
+    # Create a helper node to run the service client
     service_node = rclpy.create_node('waypoint_nav_services')
     navigator = BasicNavigator()
 
     # --- Wait for Nav2 to be fully active ---
+    # NOTE: We use _waitForNodeToActivate directly because
+    # waitUntilNav2Active() also waits for AMCL, which this project
+    # doesn't use (robot_localization provides map→odom TF instead).
     navigator.get_logger().info('Waiting for Nav2 bt_navigator to become active ...')
     navigator._waitForNodeToActivate('bt_navigator')
     navigator.get_logger().info('Nav2 is active! Giving EKF a few seconds to settle ...')
@@ -79,19 +98,28 @@ def main():
     navigator.declare_parameter('loop', False)
     loop_mode = navigator.get_parameter('loop').get_parameter_value().bool_value
 
-    # --- Build waypoint poses ---
-    waypoint_poses = []
-    for idx, (lat, lon, yaw) in enumerate(WAYPOINTS):
-        pose = create_pose(navigator, service_node, lat, lon, yaw)
-        waypoint_poses.append(pose)
-        navigator.get_logger().info(
-            f'  Waypoint {idx}: Lat={lat:.6f} Lon={lon:.6f} -> Map(x={pose.pose.position.x:.2f}, y={pose.pose.position.y:.2f})'
-        )
+    # --- Load waypoints from YAML ---
+    waypoints = load_waypoints()
 
-    if not waypoint_poses:
-        navigator.get_logger().error('No waypoints defined! Edit the WAYPOINTS list in waypoint_nav.py.')
+    if not waypoints:
+        navigator.get_logger().error(
+            'No waypoints found! Check config/missions.yaml.'
+        )
         rclpy.shutdown()
         return
+
+    # --- Create /fromLL client once and reuse ---
+    fromll_client = service_node.create_client(FromLL, '/fromLL')
+
+    # --- Build waypoint poses ---
+    waypoint_poses = []
+    for idx, (lat, lon, yaw) in enumerate(waypoints):
+        pose = create_pose(navigator, service_node, lat, lon, yaw, fromll_client)
+        waypoint_poses.append(pose)
+        navigator.get_logger().info(
+            f'  Waypoint {idx}: Lat={lat:.6f} Lon={lon:.6f} -> '
+            f'Map(x={pose.pose.position.x:.2f}, y={pose.pose.position.y:.2f})'
+        )
 
     run_count = 0
 

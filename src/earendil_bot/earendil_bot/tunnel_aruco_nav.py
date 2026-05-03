@@ -580,7 +580,7 @@ class TunnelArucoNavigator(Node):
                 '✅ Positioned between EXIT markers. Mission complete!'
             )
             self.state = self.FINISHED
-            sys.exit(0)
+            raise SystemExit
 
 
 # ──────────────────────────────────────────────────────────────────────
